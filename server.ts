@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import { Pool } from "pg";
 
 dotenv.config();
 // Fallback to reading from .env.example if GEMINI_API_KEY is not defined in .env or standard env vars
@@ -12,6 +13,36 @@ if (!process.env.GEMINI_API_KEY) {
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// PostgreSQL connection pool configuration
+const dbUrl = process.env.DATABASE_URL;
+const isDbConnected = !!dbUrl;
+const pool = new Pool({
+  connectionString: dbUrl,
+  ssl: dbUrl ? { rejectUnauthorized: false } : false,
+});
+
+if (!isDbConnected) {
+  console.log("⚠️ DATABASE_URL is not set. Saving history will only fallback to local browser storage.");
+}
+
+async function initializeDatabase() {
+  if (!isDbConnected) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prompt_history (
+        id VARCHAR(255) PRIMARY KEY,
+        timestamp VARCHAR(255) NOT NULL,
+        raw_input TEXT NOT NULL,
+        category VARCHAR(255) NOT NULL,
+        result JSONB NOT NULL
+      );
+    `);
+    console.log("✅ Database initialized: 'prompt_history' table is ready.");
+  } catch (err) {
+    console.error("❌ Failed to initialize database:", err);
+  }
+}
 
 app.use(express.json());
 
@@ -234,8 +265,80 @@ ${testInput || "لا يوجد مدخل محدد للاختبار، افترض م
   }
 });
 
+// GET /api/history - Retrieve all prompt history items
+app.get("/api/history", async (req, res) => {
+  if (!isDbConnected) {
+    return res.json([]); // Return empty list gracefully if DB not configured
+  }
+  try {
+    const { rows } = await pool.query("SELECT * FROM prompt_history ORDER BY timestamp DESC");
+    const mapped = rows.map(r => ({
+      id: r.id,
+      timestamp: r.timestamp,
+      rawInput: r.raw_input,
+      category: r.category,
+      result: r.result
+    }));
+    res.json(mapped);
+  } catch (err: any) {
+    console.error("Error fetching history:", err);
+    res.status(500).json({ error: "فشل استرجاع الأرشيف من قاعدة البيانات." });
+  }
+});
+
+// POST /api/history - Save a prompt history item
+app.post("/api/history", async (req, res) => {
+  if (!isDbConnected) {
+    return res.status(503).json({ error: "قاعدة البيانات غير متصلة." });
+  }
+  try {
+    const { id, timestamp, rawInput, category, result } = req.body;
+    if (!id || !rawInput) {
+      return res.status(400).json({ error: "بيانات الأرشيف غير مكتملة." });
+    }
+    await pool.query(
+      "INSERT INTO prompt_history (id, timestamp, raw_input, category, result) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING",
+      [id, timestamp, rawInput, category, JSON.stringify(result)]
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error saving history:", err);
+    res.status(500).json({ error: "فشل حفظ الأرشيف في قاعدة البيانات." });
+  }
+});
+
+// DELETE /api/history/:id - Delete a prompt history item
+app.delete("/api/history/:id", async (req, res) => {
+  if (!isDbConnected) {
+    return res.status(503).json({ error: "قاعدة البيانات غير متصلة." });
+  }
+  try {
+    const { id } = req.params;
+    await pool.query("DELETE FROM prompt_history WHERE id = $1", [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error deleting history item:", err);
+    res.status(500).json({ error: "فشل حذف العنصر من قاعدة البيانات." });
+  }
+});
+
+// DELETE /api/history - Clear all prompt history items
+app.delete("/api/history", async (req, res) => {
+  if (!isDbConnected) {
+    return res.status(503).json({ error: "قاعدة البيانات غير متصلة." });
+  }
+  try {
+    await pool.query("DELETE FROM prompt_history");
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error clearing history:", err);
+    res.status(500).json({ error: "فشل مسح الأرشيف من قاعدة البيانات." });
+  }
+});
+
 // Vite Middleware for dev & static serving for production
 async function runServer() {
+  await initializeDatabase();
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

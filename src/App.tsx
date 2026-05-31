@@ -141,25 +141,67 @@ export default function App() {
     setShowInstallBtn(false);
   };
 
-  // Load history from localStorage on mount
+  // Load history from API on mount, fallback to localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("prompt_architect_history");
-      if (saved) {
-        setHistory(JSON.parse(saved));
+    const fetchHistory = async () => {
+      try {
+        const response = await fetch("/api/history");
+        if (response.ok) {
+          const data = await response.json();
+          setHistory(data);
+        } else {
+          throw new Error("DB load failed");
+        }
+      } catch (e) {
+        console.warn("Could not load history from DB, falling back to localStorage:", e);
+        try {
+          const saved = localStorage.getItem("prompt_architect_history");
+          if (saved) {
+            setHistory(JSON.parse(saved));
+          }
+        } catch (err) {
+          console.error("Failed to load history from localStorage:", err);
+        }
       }
-    } catch (e) {
-      console.error("Failed to load history:", e);
-    }
+    };
+    fetchHistory();
   }, []);
 
-  // Save history helper
-  const saveHistory = (newHistory: HistoryItem[]) => {
+  // Save history helper (updates state, local storage and triggers DB save in the background)
+  const saveHistory = async (newHistory: HistoryItem[], latestItem?: HistoryItem) => {
     setHistory(newHistory);
     try {
       localStorage.setItem("prompt_architect_history", JSON.stringify(newHistory));
     } catch (e) {
-      console.error("Failed to save history:", e);
+      console.error("Failed to save history to localStorage:", e);
+    }
+
+    if (latestItem) {
+      try {
+        await fetch("/api/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(latestItem),
+        });
+      } catch (e) {
+        console.warn("Could not save history to DB in background:", e);
+      }
+    }
+  };
+
+  // Clear all history helper
+  const handleClearHistory = async () => {
+    setHistory([]);
+    try {
+      localStorage.setItem("prompt_architect_history", "[]");
+    } catch (err) {
+      console.error(err);
+    }
+
+    try {
+      await fetch("/api/history", { method: "DELETE" });
+    } catch (err) {
+      console.warn("Could not clear DB in background:", err);
     }
   };
 
@@ -231,7 +273,7 @@ export default function App() {
         category,
         result: data
       };
-      saveHistory([newItem, ...history]);
+      saveHistory([newItem, ...history], newItem);
 
     } catch (err: any) {
       setError(err?.message || "حدث خطأ غير متوقع أثناء معالجة البرومبت.");
@@ -269,10 +311,24 @@ export default function App() {
     }
   };
 
-  const handleDeleteHistory = (id: string, e: React.MouseEvent) => {
+  const handleDeleteHistory = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const updated = history.filter(item => item.id !== id);
-    saveHistory(updated);
+    
+    // Update UI and LocalStorage instantly
+    setHistory(updated);
+    try {
+      localStorage.setItem("prompt_architect_history", JSON.stringify(updated));
+    } catch (err) {
+      console.error(err);
+    }
+
+    // Trigger API delete in the background
+    try {
+      await fetch(`/api/history/${id}`, { method: "DELETE" });
+    } catch (err) {
+      console.warn("Could not delete from DB in background:", err);
+    }
   };
 
   const handleLoadHistory = (item: HistoryItem) => {
@@ -522,7 +578,7 @@ export default function App() {
                 <div className="flex items-center justify-between pb-2 border-b border-gray-200">
                   <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 font-mono block">التراكمات الأرشيفية السابقة</span>
                   <button
-                    onClick={() => saveHistory([])}
+                    onClick={handleClearHistory}
                     className="text-[10px] text-rose-600 hover:text-rose-700 font-mono font-bold hover:underline bg-transparent border-none cursor-pointer"
                   >
                     تفريغ التاريخ
