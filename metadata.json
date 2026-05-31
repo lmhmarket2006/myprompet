@@ -1,0 +1,8 @@
+{
+  "name": "Prompt Architect AI V3",
+  "description": "أداة ذكية مدعومة بالذكاء الاصطناعي لتحليل وتحسين وتطوير البرومبتات والأفكار وتحويلها إلى برومبتات احترافية فائقة الجودة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
