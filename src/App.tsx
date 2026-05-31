@@ -20,7 +20,8 @@ import {
   Maximize2,
   FileText,
   Workflow,
-  Plus
+  Plus,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Markdown from "react-markdown";
@@ -107,6 +108,38 @@ export default function App() {
   
   // Global copy feedback status
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+
+  // PWA Install State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+
+    // Hide if already running in standalone display mode
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBtn(false);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User choice to install: ${outcome}`);
+    setDeferredPrompt(null);
+    setShowInstallBtn(false);
+  };
 
   // Load history from localStorage on mount
   useEffect(() => {
@@ -261,23 +294,23 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5] flex flex-col antialiased text-[#1A1A1A] p-2 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-[#F7F7F5] flex flex-col antialiased text-[#1A1A1A] p-1 sm:p-4 md:p-6 lg:p-8">
       
       {/* Editorial Frame with Thick Off-Black Border */}
-      <div className="flex flex-col flex-1 border-4 md:border-8 border-[#1A1A1A] bg-white shadow-[12px_12px_0px_rgba(26,26,26,0.08)] relative overflow-hidden">
+      <div className="flex flex-col flex-1 border-2 sm:border-4 md:border-8 border-[#1A1A1A] bg-white shadow-[4px_4px_0px_rgba(26,26,26,0.08)] sm:shadow-[12px_12px_0px_rgba(26,26,26,0.08)] relative overflow-hidden">
         
         {/* Header Section (Classic Newspaper masthead style) */}
-        <header className="border-b-2 border-[#1A1A1A] bg-white px-4 py-6 md:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-[#1A1A1A] text-white rounded-none flex items-center justify-center font-bold text-xl font-serif select-none">
+        <header className="border-b-2 border-[#1A1A1A] bg-white px-4 py-4 md:py-6 md:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1A1A1A] text-white rounded-none flex items-center justify-center font-bold text-lg md:text-xl font-serif select-none shrink-0">
               P
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-[9px] uppercase tracking-[0.2em] bg-[#1A1A1A] text-[#F7F7F5] px-2 py-0.5 rounded-none font-bold">V3.02 PRO</span>
-                <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
               </div>
-              <h1 className="font-serif text-2xl md:text-3xl font-bold tracking-tighter italic text-[#1A1A1A] mt-1">
+              <h1 className="font-serif text-xl md:text-3xl font-bold tracking-tighter italic text-[#1A1A1A] mt-1 truncate">
                 PROMPT ARCHITECT <span className="font-sans not-italic text-xs text-gray-500 font-bold ml-1">AI</span>
               </h1>
             </div>
@@ -285,6 +318,15 @@ export default function App() {
 
           {/* Quick Stats Panel in masthead */}
           <div className="flex flex-wrap gap-4 md:gap-8 items-center border-t md:border-t-0 border-gray-100 pt-4 md:pt-0 w-full md:w-auto justify-between md:justify-end">
+            {showInstallBtn && (
+              <button
+                onClick={handleInstallApp}
+                className="flex items-center gap-2 px-3 py-2 border-2 border-[#1A1A1A] bg-[#F59E0B] text-black font-sans font-bold text-xs uppercase hover:bg-amber-400 transition cursor-pointer shadow-[3px_3px_0px_rgba(26,26,26,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[2px_2px_0px_rgba(26,26,26,1)] shrink-0 ml-auto md:ml-0 font-medium"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>تثبيت التطبيق (PWA)</span>
+              </button>
+            )}
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">حالة النظام</p>
               <p className="text-xs font-mono font-bold text-emerald-600 tracking-tighter">OPTIMAL_ENGINE_ACTIVE</p>
@@ -615,11 +657,11 @@ export default function App() {
                 </div>
 
                 {/* Custom Elegant Design Tabs */}
-                <div className="border border-[#1A1A1A] bg-[#F7F7F5] flex flex-wrap p-1 gap-1">
+                <div className="border border-[#1A1A1A] bg-[#F7F7F5] flex overflow-x-auto lg:flex-wrap p-1 gap-1 no-scrollbar scroll-smooth snap-x">
                   
                   <button
                     onClick={() => setActiveTab("dashboard")}
-                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer ${
+                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer snap-start shrink-0 ${
                       activeTab === "dashboard"
                         ? "bg-[#1A1A1A] text-white"
                         : "text-slate-600 hover:text-black hover:bg-slate-200/50"
@@ -631,7 +673,7 @@ export default function App() {
 
                   <button
                     onClick={() => setActiveTab("prompt")}
-                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer ${
+                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer snap-start shrink-0 ${
                       activeTab === "prompt"
                         ? "bg-[#1A1A1A] text-white"
                         : "text-slate-600 hover:text-black hover:bg-slate-200/50"
@@ -643,7 +685,7 @@ export default function App() {
 
                   <button
                     onClick={() => setActiveTab("evaluation")}
-                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer ${
+                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer snap-start shrink-0 ${
                       activeTab === "evaluation"
                         ? "bg-[#1A1A1A] text-white"
                         : "text-slate-600 hover:text-black hover:bg-slate-200/50"
@@ -655,7 +697,7 @@ export default function App() {
 
                   <button
                     onClick={() => setActiveTab("text")}
-                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer ${
+                    className={`flex items-center gap-2 py-2 px-3 text-xs font-mono font-bold transition rounded-none cursor-pointer snap-start shrink-0 ${
                       activeTab === "text"
                         ? "bg-[#1A1A1A] text-white"
                         : "text-slate-600 hover:text-black hover:bg-slate-200/50"
@@ -667,7 +709,7 @@ export default function App() {
 
                   <button
                     onClick={() => setActiveTab("playground")}
-                    className={`flex items-center gap-2 py-2 px-4 text-xs font-mono font-bold transition rounded-none cursor-pointer ${
+                    className={`flex items-center gap-2 py-2 px-4 text-xs font-mono font-bold transition rounded-none cursor-pointer snap-start shrink-0 ${
                       activeTab === "playground"
                         ? "bg-emerald-700 text-white"
                         : "text-emerald-700 hover:bg-emerald-50"
